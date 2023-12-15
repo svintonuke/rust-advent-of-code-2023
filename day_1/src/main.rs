@@ -94,7 +94,7 @@ fn string_number_to_string_char_number(string: String) -> String {
         if number_string_size > string.len() {
             continue;
         } else if string[0..number_string_size].to_string() == number_string.to_string() {
-            return format!("{}{}", number.1.to_string(), string_number_to_string_char_number(string[number_string_size..].to_string()))
+            return format!("{}{}", number.1.to_string(), string_number_to_string_char_number(string[1..].to_string()))
         }
     }
 
@@ -107,21 +107,26 @@ mod string_number_to_string_char_number {
 
     #[test]
     fn test_one_string_number() {
-        assert_eq!(string_number_to_string_char_number(String::from("aonea")), String::from("a1a"));
+        assert_eq!(string_number_to_string_char_number(String::from("aonea")), String::from("a1nea"));
     }
 
     #[test]
     fn test_two_strings_numbers() {
-        assert_eq!(string_number_to_string_char_number(String::from("aoneatwoa")), String::from("a1a2a"));
+        assert_eq!(string_number_to_string_char_number(String::from("aoneatwoa")), String::from("a1nea2woa"));
     }
 
     #[test]
     fn test_three_strings_numbers() {
-        assert_eq!(string_number_to_string_char_number(String::from("aoneatwoathreea")), String::from("a1a2a3a"));
+        assert_eq!(string_number_to_string_char_number(String::from("aoneatwoathreea")), String::from("a1nea2woa3hreea"));
     }
 
     #[test]
     fn test_empty_string() {
         assert_eq!(string_number_to_string_char_number(String::from("")), String::from(""));
+    }
+
+    #[test]
+    fn test_combined_string() {
+        assert_eq!(string_number_to_string_char_number(String::from("twone")), String::from("2w1ne"));
     }
 }
