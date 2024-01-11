@@ -2,8 +2,7 @@ use std::fs::File;
 use std::io::{self, BufRead};
 use std::path::Path;
 
-const N_SEEDS: usize = 20;
-const IS_SECOND_PART: bool = false;
+const IS_SECOND_PART: bool = true;
 fn main() {
     let file_name = "./src/input.txt";
 
@@ -23,7 +22,7 @@ fn main() {
                     Ok(line) => {
                         if n_line == 0 {
                             seeds = (line[7..].to_string())
-                                        .splitn(N_SEEDS, " ")
+                                        .split(" ")
                                         .collect::<Vec<&str>>()
                                         .iter()
                                         .filter_map(|&x| x.parse().ok())
@@ -31,9 +30,9 @@ fn main() {
                         } else if n_line == 1 {
                             
                         } else if line.contains("-to-") {
-                            //line[0..(line.len() - 6)];
-                            source = String::from("");
-                            destination = String::from("");
+                            let first_part = &line[0..(line.len() - 5)];
+                            source = first_part.split("-to-").collect::<Vec<&str>>()[0].to_string();
+                            destination = first_part.split("-to-").collect::<Vec<&str>>()[1].to_string();
                         } else if line.is_empty() {
                             categories.push(CategoryMap::new(source, destination, descriptions));
                             source = String::from("");
@@ -52,39 +51,33 @@ fn main() {
             categories.push(CategoryMap::new(source, destination, descriptions));
 
             if IS_SECOND_PART {
-                let mut new_seeds: Vec<(u64, u64)> = vec![];
-                for i in (0..seeds.len()).step_by(2) {
-                    let start = seeds[i];
-                    let length = seeds[i + 1];
-                    new_seeds.push((start, length));
+                let mut ranges: Vec<(u64, u64)> = vec![];
+                for n_and_start in seeds.iter().step_by(2).enumerate() {
+                    ranges.push((n_and_start.1.to_owned(), n_and_start.1.to_owned() + seeds[(n_and_start.0 * 2) + 1]));
                 }
 
-                let mut location: u64 = 6603921;
-                let mut lowest_location: u64 = 0;
-                loop {
-                    println!("Trying location: {}", location);
-                    for category in categories.iter().rev() {
-                        lowest_location = category.source_result(location);
+                let mut results: Vec<(u64, u64)> = vec![];
+                for range_seeds in ranges.iter() {
+                    let mut range_locations = vec![range_seeds.clone()];
+                    for category in categories.iter() {
+                        range_locations = category.result_by_ranges(range_locations);
                     }
-                    println!("      source required is: {}", lowest_location);
-                    if seed_includes(&new_seeds, lowest_location) {
-                        break;
-                    }
-                    location += 1;
+                    results.extend(range_locations);
                 }
+                results.sort_by(|a, b| a.0.cmp(&b.0));
+                
+                let lowest_location: u64 = results[0].0;
                 println!("The lowest location number that corresponds to any of the initial seeds is: {}", lowest_location);
             } else {
                 let mut locations: Vec<u64> = vec![];
-                //let harcoded_seeds = vec![79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 92, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66 ,67];
                 for seed in seeds.iter() {
                     let mut location = *seed;
-                    print!("{}", location);
+                    print!("Seed -> Location: {}", location);
                     for category in categories.iter() {
                         location = category.result(location);
                         print!(" -> {}", location);
                     }
                     println!("");
-                    println!(" - {} - ", location);
                     locations.push(location);
                 }
 
@@ -99,41 +92,12 @@ fn main() {
     }
 }
 
-fn seed_includes(seeds: &Vec<(u64, u64)>, seed: u64) -> bool {
-    for seed_group in seeds.iter() {
-        if (seed_group.0 <= seed) && (seed <= (seed_group.0 + seed_group.1 - 1)) {
-            return true
-        }
-    }
-    return false
-}
-
-#[cfg(test)]
-mod test_seed_includes {
-    use super::*;
-
-    #[test]
-    fn test_seed_includes() {
-        assert_eq!(seed_includes(&vec![(79 as u64, 14 as u64), (55 as u64, 13 as u64)], 78), false);
-        assert_eq!(seed_includes(&vec![(79 as u64, 14 as u64), (55 as u64, 13 as u64)], 79), true);
-        assert_eq!(seed_includes(&vec![(79 as u64, 14 as u64), (55 as u64, 13 as u64)], 92), true);
-        assert_eq!(seed_includes(&vec![(79 as u64, 14 as u64), (55 as u64, 13 as u64)], 93), false);
-
-        assert_eq!(seed_includes(&vec![(79 as u64, 14 as u64), (55 as u64, 13 as u64)], 54), false);
-        assert_eq!(seed_includes(&vec![(79 as u64, 14 as u64), (55 as u64, 13 as u64)], 55), true);
-        assert_eq!(seed_includes(&vec![(79 as u64, 14 as u64), (55 as u64, 13 as u64)], 67), true);
-        assert_eq!(seed_includes(&vec![(79 as u64, 14 as u64), (55 as u64, 13 as u64)], 68), false);
-    }
-}
-
 fn read_lines<P>(filename: P) -> io::Result<io::Lines<io::BufReader<File>>>
 where P: AsRef<Path>, {
     let file = File::open(filename)?;
     Ok(io::BufReader::new(file).lines())
 }
 
-#[warn(dead_code)]
-#[warn(unused_variables)]
 #[derive(Debug)]
 struct CategoryMap {
     source: String,
@@ -164,14 +128,34 @@ impl CategoryMap {
         return source
     }
 
-    fn source_result(&self, destination: u64) -> u64 {
-        for map in self.maps.iter() {
-            if map.source_is_on_range(destination) {
-                return map.result_source(destination)
+    fn result_by_ranges(&self, ranges: Vec<(u64, u64)>) -> Vec<(u64, u64)> {
+        let mut result: Vec<(u64, u64)> = vec![];
+        for range in ranges.iter() {
+            result.extend(self.result_by_range_recursive(range.clone()));
+        }
+        return result
+    }
+
+    fn result_by_range_recursive(&self, range: (u64, u64)) -> Vec<(u64, u64)> {
+        let mut results: Vec<(u64, u64)> = vec![];
+
+        for internal_map in self.maps.iter() {
+            if internal_map.is_able_to_resolve_a_part_of(range) {
+                let (partial_result, remains) = internal_map.result_range_and_remains(range);
+
+                results.push(partial_result);
+
+                for remain in remains.iter() {
+                    results.extend(self.result_by_range_recursive(remain.clone()));
+                }
+
+                return results
             }
         }
-        return destination
+
+        return vec![range]
     }
+
 }
 
 #[cfg(test)]
@@ -217,13 +201,38 @@ mod test_category_map {
         let my_seed_to_soil_map = initialize_seed_to_soil_map();
         assert_eq!(my_seed_to_soil_map.result(51), 53);
     }
+
+    #[test]
+    fn test_mapped_by_range() {
+        let my_seed_to_soil_map = initialize_seed_to_soil_map();
+
+        let mut expected = vec![(1, 49), (52, 53), (98, 99), (50, 51), (100, 101)];
+        expected.sort_by(|a, b| a.0.cmp(&b.0));
+
+        let mut result = my_seed_to_soil_map.result_by_ranges(vec![(1, 51), (96, 101)]);
+        result.sort_by(|a, b| a.0.cmp(&b.0));
+
+        assert_eq!(result, expected);
+    }
 }
 
 #[derive(Debug)]
 struct InternalMap {
     source_range_start: u64,
+    source_range_end: u64,
     destination_range_start: u64,
-    range_length: u64
+    destination_range_end: u64
+}
+
+impl Clone for InternalMap {
+    fn clone(&self) -> Self {
+        Self {
+            source_range_start: self.source_range_start.clone(),
+            source_range_end: self.source_range_end.clone(),
+            destination_range_start: self.destination_range_start.clone(),
+            destination_range_end: self.destination_range_end.clone(),
+        }
+    }
 }
 
 impl InternalMap {
@@ -239,32 +248,50 @@ impl InternalMap {
             panic!("invalid description");
         }
 
+        let range_length = splited_description[2];
         InternalMap {
-            destination_range_start: splited_description[0],
             source_range_start: splited_description[1],
-            range_length: splited_description[2]
+            source_range_end: splited_description[1] + range_length - 1,
+            destination_range_start: splited_description[0],
+            destination_range_end: splited_description[0] + range_length - 1
         }
     }
 
     fn is_on_range(&self, source: u64) -> bool {
-        return !((source < self.source_range_start) | (self.source_range_start + self.range_length - 1 < source))
+        return (self.source_range_start <= source) && (source <= self.source_range_end);
     }
 
     fn result(&self, source: u64) -> u64 {
-        if (self.is_on_range(source)) {
+        if self.is_on_range(source) {
             return self.destination_range_start + (source - self.source_range_start); 
         } else {
-            panic!("out of range");
+            panic!("out of range source: {}", source);
         }
     }
 
-    fn source_is_on_range(&self, destination: u64) -> bool {
-        return !((destination < self.destination_range_start) | (self.destination_range_start + self.range_length - 1 < destination))
+    fn is_able_to_resolve_a_part_of(&self, range: (u64, u64)) -> bool {
+        return !((range.1 < self.source_range_start) || (self.source_range_end < range.0))
     }
 
-    fn result_source(&self, destination: u64) -> u64 {
-        if (self.source_is_on_range(destination)) {
-            return self.source_range_start + (destination - self.destination_range_start); 
+    fn result_range_and_remains(&self, range: (u64, u64)) -> ((u64, u64), Vec<(u64, u64)>) {
+        if self.is_able_to_resolve_a_part_of(range) {
+            if (self.source_range_start <= range.0) && (range.1 <= self.source_range_end) {
+                let result: (u64, u64) = (self.result(range.0), self.result(range.1));
+                let remains: Vec<(u64, u64)> = vec![];
+                return (result, remains)
+            } else if (range.0 <= self.source_range_start) && (self.source_range_start <= range.1) && (range.1 < self.source_range_end) {
+                let result: (u64, u64) = (self.result(self.source_range_start), self.result(range.1));
+                let remains: Vec<(u64, u64)> = vec![(range.0, self.source_range_start - 1)];
+                return (result, remains)
+            } else if (self.source_range_start <= range.0) && (range.0 <= self.source_range_end) && (self.source_range_end < range.1) {
+                let result: (u64, u64) = (self.result(range.0), self.result(self.source_range_end));
+                let remains: Vec<(u64, u64)> = vec![(self.source_range_end + 1, range.1)];
+                return (result, remains)
+            } else {
+                let result: (u64, u64) = (self.result(self.source_range_start), self.result(self.source_range_end));
+                let remains: Vec<(u64, u64)> = vec![(range.0, self.source_range_start - 1), (self.source_range_end + 1, range.1)];
+                return (result, remains)
+            }
         } else {
             panic!("out of range");
         }
@@ -277,6 +304,27 @@ mod test_internal_map {
 
     fn initialize_seed_to_soil_internal_map() -> InternalMap {
         return InternalMap::new(String::from("50 98 2"));
+    }
+
+    #[test]
+    fn result_range_and_remains() {
+        let my_seed_to_soil_map = InternalMap::new(String::from("20 10 6"));
+        assert_eq!(my_seed_to_soil_map.result_range_and_remains((10, 15)), ((20, 25), vec![]));
+        assert_eq!(my_seed_to_soil_map.result_range_and_remains((11, 14)), ((21, 24), vec![]));
+        assert_eq!(my_seed_to_soil_map.result_range_and_remains((5, 12)), ((20, 22), vec![(5, 9)]));
+        assert_eq!(my_seed_to_soil_map.result_range_and_remains((13, 20)), ((23, 25), vec![(16, 20)]));
+        assert_eq!(my_seed_to_soil_map.result_range_and_remains((5, 20)), ((20, 25), vec![(5, 9), (16, 20)]));
+    }
+    
+    #[test]
+    fn is_able_to_resolve_a_part_of() {
+        let my_seed_to_soil_map = initialize_seed_to_soil_internal_map();
+        assert_eq!(my_seed_to_soil_map.is_able_to_resolve_a_part_of((96, 97)), false);
+        assert_eq!(my_seed_to_soil_map.is_able_to_resolve_a_part_of((97, 98)), true);
+        assert_eq!(my_seed_to_soil_map.is_able_to_resolve_a_part_of((98, 99)), true);
+        assert_eq!(my_seed_to_soil_map.is_able_to_resolve_a_part_of((99, 100)), true);
+        assert_eq!(my_seed_to_soil_map.is_able_to_resolve_a_part_of((100, 101)), false);
+        assert_eq!(my_seed_to_soil_map.is_able_to_resolve_a_part_of((96, 101)), true);
     }
 
     #[test]
@@ -328,40 +376,4 @@ mod test_internal_map {
         InternalMap::new(String::from("01 01"));
     }
 
-    #[test]
-    fn test_mapped_source_first() {
-        let my_seed_to_soil_map = initialize_seed_to_soil_internal_map();
-        assert_eq!(my_seed_to_soil_map.result_source(50), 98);
-    }
-
-    #[test]
-    fn test_mapped_source_second() {
-        let my_seed_to_soil_map = initialize_seed_to_soil_internal_map();
-        assert_eq!(my_seed_to_soil_map.result_source(51), 99);
-    }
-
-    #[test]
-    #[should_panic(expected = "out of range")]
-    fn test_mapped_source_out_of_range() {
-        let my_seed_to_soil_map = initialize_seed_to_soil_internal_map();
-        my_seed_to_soil_map.result_source(1);
-    }
-
-    #[test]
-    fn test_source_is_not_on_range_low() {
-        let my_seed_to_soil_map = initialize_seed_to_soil_internal_map();
-        assert_eq!(my_seed_to_soil_map.source_is_on_range(49), false);
-    }
-
-    #[test]
-    fn test_source_is_on_range() {
-        let my_seed_to_soil_map = initialize_seed_to_soil_internal_map();
-        assert_eq!(my_seed_to_soil_map.source_is_on_range(50), true);
-    }
-
-    #[test]
-    fn test_source_is_not_on_range_greater() {
-        let my_seed_to_soil_map = initialize_seed_to_soil_internal_map();
-        assert_eq!(my_seed_to_soil_map.source_is_on_range(52), false);
-    }
 }
